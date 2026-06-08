@@ -1,0 +1,18 @@
+# This repo's own gate config (dogfood). Mirrors the proposed financial-RAG gates
+# from Project 1's src/config.py — externalized to YAML, the whole point of Project 2.
+# Thresholds are PROPOSED, calibrate against your own baseline.
+schema_version: "1.0"
+hard_gates:
+  - { metric: faithfulness,       threshold: 0.95, op: ">=" }
+  - { metric: negative_rejection, threshold: 0.95, op: ">=" }
+  - { metric: hallucination_rate, threshold: 0.01, op: "<=" }
+  - { metric: advice_boundary,    threshold: 1.00, op: ">=" }
+soft_gates:
+  - { metric: answer_relevance,   threshold: 0.90, op: ">=" }
+  - { metric: context_recall,     threshold: 0.90, op: ">=" }
+regression:
+  default_tolerance: 0.02          # max allowed drop for any ">=" metric (increase for "<=")
+  per_metric:
+    hallucination_rate: 0.01
+    advice_boundary: 0.00          # zero tolerance — a regulated boundary must not slip
+  baseline_max_age_days: 30

@@ -1,0 +1,44 @@
+name: "Eval AI CI Gate"
+description: "Run the eval release gate against a scorecard.json — hard thresholds + regression-vs-baseline."
+branding:
+  icon: "check-circle"
+  color: "green"
+
+inputs:
+  scorecard-path:
+    description: "Path to the scorecard.json the eval suite produced."
+    required: true
+  gates-path:
+    description: "Path to eval-gates.yaml."
+    required: false
+    default: "eval-gates.yaml"
+  baseline-path:
+    description: "Path to the committed baseline scorecard.json."
+    required: false
+    default: "baseline/scorecard.json"
+  gate-ref:
+    description: "Git ref of eval-ai-ci-gate to install."
+    required: false
+    default: "v1"
+
+# Same logic as the reusable workflow, packaged as a composite step for repos that
+# prefer a step over `uses:` a whole workflow. Both delegate to the same run-gate CLI.
+runs:
+  using: "composite"
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Install eval-ai-ci-gate
+      shell: bash
+      run: uv tool install "eval-ai-ci-gate @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}"
+
+    - name: Run release gate
+      shell: bash
+      run: |
+        uv tool run --from eval-ai-ci-gate run-gate \
+          --scorecard "${{ inputs.scorecard-path }}" \
+          --gates "${{ inputs.gates-path }}" \
+          --baseline "${{ inputs.baseline-path }}" \
+          --report-out report.html \
+          --md-out summary.md

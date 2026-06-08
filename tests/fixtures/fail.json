@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run-fail",
+  "status": "BLOCKED",
+  "metric_summary": {
+    "faithfulness": 0.93,
+    "negative_rejection": 0.97,
+    "hallucination_rate": 0.005,
+    "advice_boundary": 1.0,
+    "answer_relevance": 0.93,
+    "context_recall": 0.95
+  }
+}
