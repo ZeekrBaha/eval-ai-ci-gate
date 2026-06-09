@@ -80,6 +80,20 @@ def test_zero_tolerance_blocks_any_drop() -> None:
     assert results[0].regressed is True
 
 
+def test_drop_exactly_equal_to_tolerance_does_not_regress() -> None:
+    # A drop of exactly the tolerance is allowed (regress only when it EXCEEDS tolerance),
+    # and float subtraction noise must not flip this.
+    cfg = _cfg([GateSpec("answer_relevance", 0.90, ">=")], default_tol=0.02)
+    results = diff(cfg, {"answer_relevance": 0.88}, {"answer_relevance": 0.90})
+    assert results[0].regressed is False
+
+
+def test_drop_just_over_tolerance_regresses() -> None:
+    cfg = _cfg([GateSpec("answer_relevance", 0.90, ">=")], default_tol=0.02)
+    results = diff(cfg, {"answer_relevance": 0.8749}, {"answer_relevance": 0.90})
+    assert results[0].regressed is True
+
+
 def test_result_carries_values_and_tolerance() -> None:
     cfg = _cfg([GateSpec("answer_relevance", 0.90, ">=")], default_tol=0.02)
     r = diff(cfg, {"answer_relevance": 0.85}, {"answer_relevance": 0.90})[0]

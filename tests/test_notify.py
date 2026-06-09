@@ -49,6 +49,14 @@ def test_slack_non_2xx_reported_not_raised() -> None:
     assert result.startswith("error")
 
 
+def test_slack_skips_gracefully_when_requests_missing(monkeypatch: Any) -> None:
+    # Simulate the `requests` optional dep not being installed in the Action runtime.
+    monkeypatch.setattr("gate.notify._load_requests_slack_post", lambda: None)
+    result = notify_slack("x", WEBHOOK)  # no injected post -> falls back to loader
+    assert "requests not installed" in result
+    assert result.startswith("skipped")
+
+
 # --- PR comment --------------------------------------------------------------
 
 
@@ -111,3 +119,10 @@ def test_pr_comment_ignores_unrelated_comments() -> None:
     result = upsert_pr_comment("body", repo="o/r", pr_number=7, token="t", client=c)
     assert result == "created"
     assert len(c.posted) == 1
+
+
+def test_pr_comment_skips_gracefully_when_requests_missing(monkeypatch: Any) -> None:
+    monkeypatch.setattr("gate.notify._load_requests_client", lambda: None)
+    result = upsert_pr_comment("body", repo="o/r", pr_number=7, token="t")  # no injected client
+    assert "requests not installed" in result
+    assert result.startswith("skipped")

@@ -24,11 +24,16 @@ class HttpClient(Protocol):
     def patch(self, url: str, headers: dict[str, str], json: dict[str, Any]) -> tuple[int, Any]: ...
 
 
+_NO_REQUESTS = "skipped: requests not installed (pip install eval-ai-ci-gate[notify])"
+
+
 def notify_slack(text: str, webhook_url: str | None, *, post: SlackPost | None = None) -> str:
     """Post *text* to a Slack incoming webhook. Skip (no-op) when the webhook is unset."""
     if not webhook_url:
         return "skipped: no webhook"
-    sender = post if post is not None else _requests_slack_post
+    sender = post if post is not None else _load_requests_slack_post()
+    if sender is None:  # `requests` extra not installed in this runtime
+        return _NO_REQUESTS
     status = sender(webhook_url, {"text": text})
     if 200 <= status < 300:
         return "sent"
@@ -50,7 +55,9 @@ def upsert_pr_comment(
     if not repo or not pr_number:
         return "skipped: not a pull request"
 
-    http = client if client is not None else _RequestsClient()
+    http = client if client is not None else _load_requests_client()
+    if http is None:  # `requests` extra not installed in this runtime
+        return _NO_REQUESTS
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -88,11 +95,27 @@ def _find_marked(comments: Any, marker: str) -> int | None:
 # --- default requests-backed implementations (only used when no client injected) -----------
 
 
-def _requests_slack_post(url: str, payload: dict[str, Any]) -> int:
-    import requests  # local import: optional `notify` extra
+def _load_requests_slack_post() -> SlackPost | None:
+    """Return the requests-backed Slack sender, or None if `requests` is not installed."""
+    try:
+        import requests  # local import: optional `notify` extra
+    except ImportError:
+        return None
 
-    resp = requests.post(url, json=payload, timeout=10)
-    return resp.status_code
+    def post(url: str, payload: dict[str, Any]) -> int:
+        resp = requests.post(url, json=payload, timeout=10)
+        return int(resp.status_code)
+
+    return post
+
+
+def _load_requests_client() -> HttpClient | None:
+    """Return a requests-backed HttpClient, or None if `requests` is not installed."""
+    try:
+        import requests  # noqa: F401
+    except ImportError:
+        return None
+    return _RequestsClient()
 
 
 class _RequestsClient:

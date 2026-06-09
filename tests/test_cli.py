@@ -139,3 +139,86 @@ def test_slack_fired_when_webhook_env_set(
     _run(tmp_path, "fail.json", "baseline.json")
     assert "Slack: sent" in capsys.readouterr().out
     assert captured  # summary was passed through
+
+
+# --- baseline policy + operational errors ------------------------------------
+
+
+def _run_with_gates(tmp_path: Path, scorecard: str, gates: Path, baseline: Path | None) -> tuple[int, Path]:
+    report = tmp_path / "report.html"
+    argv = ["--scorecard", str(FIX / scorecard), "--gates", str(gates), "--report-out", str(report)]
+    if baseline is not None:
+        argv += ["--baseline", str(baseline)]
+    return run_gate_main(argv), report
+
+
+def test_missing_baseline_is_incomplete(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "nope" / "baseline.json"
+    code, report = _run_with_gates(tmp_path, "pass.json", Path(GATES), missing)
+    assert code == 2  # cannot certify "no regression" with no baseline
+    assert "baseline not found" in capsys.readouterr().out
+    assert report.exists()
+
+
+def test_missing_baseline_optional_when_not_required(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gates = tmp_path / "gates.yaml"
+    gates.write_text(
+        'hard_gates:\n  - { metric: faithfulness, threshold: 0.95, op: ">=" }\n'
+        "regression:\n  require_baseline: false\n"
+    )
+    code, _ = _run_with_gates(tmp_path, "pass.json", gates, tmp_path / "absent.json")
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "regression check skipped" in out
+
+
+def test_bad_yaml_gates_is_controlled_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gates = tmp_path / "broken.yaml"
+    gates.write_text("hard_gates:\n  - { metric: faithfulness, op: \">=\" }\n")  # no threshold
+    code, report = _run_with_gates(tmp_path, "pass.json", gates, None)
+    assert code == 1
+    assert "Eval gate error" in capsys.readouterr().out
+    assert report.exists()  # controlled: report still written
+
+
+def test_missing_scorecard_file_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    report = tmp_path / "report.html"
+    code = run_gate_main(
+        ["--scorecard", str(tmp_path / "ghost.json"), "--gates", GATES, "--report-out", str(report)]
+    )
+    assert code == 1
+    assert "Eval gate error" in capsys.readouterr().out
+    assert report.exists()
+
+
+def test_missing_configured_metric_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gates = tmp_path / "gates.yaml"
+    gates.write_text('hard_gates:\n  - { metric: not_in_scorecard, threshold: 0.5, op: ">=" }\n')
+    code, report = _run_with_gates(tmp_path, "pass.json", gates, None)
+    assert code == 1
+    assert "Eval gate error" in capsys.readouterr().out
+    assert report.exists()
+
+
+def test_stale_baseline_adds_note_but_still_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old_baseline = tmp_path / "old.json"
+    data = json.loads((FIX / "baseline.json").read_text())
+    data["accepted_at"] = "2020-01-01"
+    old_baseline.write_text(json.dumps(data))
+    code, _ = _run_with_gates(tmp_path, "pass.json", Path(GATES), old_baseline)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "note:" in out
+    assert "days old" in out

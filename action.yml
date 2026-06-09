@@ -29,9 +29,9 @@ runs:
     - name: Install uv
       uses: astral-sh/setup-uv@v5
 
-    - name: Install eval-ai-ci-gate
+    - name: Install eval-ai-ci-gate (with notify extra so Slack/PR-comment work)
       shell: bash
-      run: uv tool install "eval-ai-ci-gate @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}"
+      run: uv tool install "eval-ai-ci-gate[notify] @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}"
 
     - name: Run release gate
       shell: bash

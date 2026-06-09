@@ -6,7 +6,7 @@
 > the merge) when a hard gate fails or a metric regresses beyond tolerance.
 
 > **Status (measured, offline):** core pipeline complete and verified — `make check` is green
-> (**ruff** clean, **mypy --strict** clean, **67 tests pass**), and all five verdict paths run
+> (**ruff** clean, **mypy --strict** clean, **100 tests pass**), and all five verdict paths run
 > end-to-end with the right exit codes:
 > `make gate` → PASS (exit 0), `make gate-fail` → BLOCKED (exit 1).
 >
@@ -82,7 +82,10 @@ Exit codes match Project 1's contract: **0 = PASS, 1 = BLOCKED, 2 = INCOMPLETE**
 
 Highest wins: **contract → hard_gate → regression → incomplete → pass**. A `null` (unevaluated)
 hard-gated metric yields INCOMPLETE — never PASS. Soft-gate failures are **warnings only**; they
-never block.
+never block. A missing required baseline yields INCOMPLETE (you cannot certify "no regression" with
+nothing to compare against). Operational problems — bad YAML, missing/invalid scorecard or baseline
+JSON, a gate referencing a metric the scorecard never emits — are **caught and turned into a
+deterministic report + exit code**, never an uncaught stack trace.
 
 ## 5. `eval-gates.yaml`
 
@@ -98,11 +101,13 @@ regression:
   per_metric:
     hallucination_rate: 0.01    # for "<=" metrics, tolerance caps the allowed INCREASE
     advice_boundary: 0.00       # zero tolerance — must not slip at all
-  baseline_max_age_days: 30
+  baseline_max_age_days: 30     # baseline older than this -> a non-blocking note in the report
+  require_baseline: true        # with --baseline, a missing baseline -> INCOMPLETE (not a silent pass)
 ```
 
 Regression is **direction-aware**: a `>=` metric regresses on a *drop*; a `<=` metric regresses on
-an *increase*. The gate reads each metric's `op` to decide which way is bad.
+an *increase*. The gate reads each metric's `op` to decide which way is bad. Comparisons decide on
+the **exact** value (rounding is display-only), so a `0.9495` cannot slip past a `0.95` gate.
 
 ## 6. The scorecard contract (v1)
 
@@ -115,7 +120,7 @@ Onboarding Project 1 requires only adding `"schema_version": "1.0"` to its exist
 
 ```bash
 uv sync
-make check            # ruff + mypy --strict + pytest (67 tests)
+make check            # ruff + mypy --strict + pytest (100 tests)
 
 # Run the gate directly
 uv run run-gate \
@@ -174,7 +179,7 @@ jobs:
 | `action.yml` | composite-action wrapper |
 | `.github/workflows/ci.yml` | this repo dogfooding its own gate |
 | `examples/` | consumer workflow + starter `eval-gates.yaml` |
-| `tests/` | 67 tests (one suite per module) |
+| `tests/` | 100 tests (one suite per module) |
 | `docs/implementation/` | research, requirements, design, architecture, plan, validation |
 
 ## 9. Tech stack
@@ -189,4 +194,4 @@ Notifiers add `requests` (optional extra). No web framework, no DB — the gate 
 - **Single-run only.** No historical trend DB / dashboard — out of scope for v1.
 - **Notifier HTTP paths are mock-tested.** Slack/PR-comment logic is unit-tested with injected
   HTTP; the live POST paths run only in real CI (graceful skip without a webhook/token).
-- Built and tested TDD: every module had a failing test first (**78 tests**). See `docs/implementation/`.
+- Built and tested TDD: every module had a failing test first (**100 tests**). See `docs/implementation/`.

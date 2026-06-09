@@ -32,3 +32,20 @@ jobs:
 
       - name: Release gate — show the BLOCKED money-shot (informational)
         run: make gate-fail
+
+  # Installs the package the same way the composite action does (with the notify extra)
+  # and proves the notifier import path works in a clean tool environment — the runtime
+  # path that unit tests, running under dev deps, cannot catch.
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install with the notify extra (the runtime path the Action uses)
+        run: |
+          uv venv
+          uv pip install ".[notify]"
+      - name: Prove the CLI runs and the notifier deps import
+        run: |
+          uv run validate-scorecard --scorecard tests/fixtures/pass.json
+          uv run python -c "import requests, gate.notify; print('notify import OK')"

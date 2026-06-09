@@ -81,3 +81,20 @@ def test_tolerance_for_returns_per_metric_then_default(tmp_path: Path) -> None:
     cfg = load_config(_write(tmp_path, VALID_YAML))
     assert cfg.regression.tolerance_for("hallucination_rate") == 0.01
     assert cfg.regression.tolerance_for("faithfulness") == 0.02  # falls back to default
+
+
+def test_require_baseline_defaults_true(tmp_path: Path) -> None:
+    cfg = load_config(_write(tmp_path, VALID_YAML))
+    assert cfg.regression.require_baseline is True
+
+
+def test_require_baseline_can_be_disabled(tmp_path: Path) -> None:
+    yaml_text = VALID_YAML + "  require_baseline: false\n"
+    cfg = load_config(_write(tmp_path, yaml_text))
+    assert cfg.regression.require_baseline is False
+
+
+def test_require_baseline_must_be_bool(tmp_path: Path) -> None:
+    yaml_text = VALID_YAML + "  require_baseline: maybe\n"
+    with pytest.raises(ConfigError, match="require_baseline"):
+        load_config(_write(tmp_path, yaml_text))

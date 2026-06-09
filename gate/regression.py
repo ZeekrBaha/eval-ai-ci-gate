@@ -16,6 +16,9 @@ from gate.config import GateConfig
 from gate.thresholds import MetricSummary
 
 DEFAULT_OP = ">="  # metrics with no configured gate: assume higher is better.
+# Decisions use the exact adverse delta, but a tiny epsilon absorbs float-subtraction
+# noise so a drop of *exactly* the tolerance is not mis-flagged as a regression.
+_DECISION_EPS = 1e-9
 
 
 @dataclass(frozen=True)
@@ -52,7 +55,9 @@ def diff(
         # Adverse movement: for ">=" a drop (base - cur); for "<=" an increase (cur - base).
         adverse_delta = base_f - cur_f if op == ">=" else cur_f - base_f
         tolerance = config.regression.tolerance_for(metric)
-        regressed = round(adverse_delta, 3) > round(tolerance, 3)
+        # Regress only when the adverse move EXCEEDS the tolerance (exact, with an
+        # epsilon for subtraction noise); a drop equal to tolerance is allowed.
+        regressed = (adverse_delta - tolerance) > _DECISION_EPS
         results.append(
             RegressionResult(
                 metric=metric,

@@ -49,6 +49,9 @@ def render_markdown(
             f"{round(r.threshold, 3)} | {r.status} |"
         )
 
+    if verdict.notes:
+        lines += ["", "**Notes:**"]
+        lines += [f"- {n}" for n in verdict.notes]
     if verdict.regressions:
         lines += ["", "**Regressions vs baseline:**"]
         lines += [f"- {r.message}" for r in verdict.regressions]
@@ -132,6 +135,11 @@ _HTML_TEMPLATE = Template(
         <td>{{ round3(r.threshold) }}</td><td class="{{ r.status }}">{{ r.status }}</td></tr>
     {%- endfor %}
   </table>
+
+  {%- if v.notes %}
+  <h2>Notes</h2>
+  <ul>{% for n in v.notes %}<li class="unevaluated">{{ n }}</li>{% endfor %}</ul>
+  {%- endif %}
 
   {%- if v.regressions %}
   <h2>Regressions vs baseline</h2>

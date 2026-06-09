@@ -15,11 +15,12 @@ import argparse
 import datetime
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from gate.config import ConfigError, load_config
-from gate.decide import EXIT_BLOCKED, Verdict, decide
+from gate.decide import EXIT_BLOCKED, EXIT_INCOMPLETE, Verdict, decide
 from gate.notify import notify_slack, upsert_pr_comment
 from gate.regression import diff
 from gate.report import render_html, render_markdown
@@ -36,38 +37,71 @@ def run_gate_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--md-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    scorecard = _read_json(args.scorecard)
-    run_id = str(scorecard.get("run_id", "unknown")) if isinstance(scorecard, dict) else "unknown"
-
-    # Rung 1: contract. On failure, still render a report so a red run is never blank.
-    try:
-        validate(scorecard)
-    except ContractError as exc:
-        verdict = Verdict(
-            status="BLOCKED",
-            exit_code=EXIT_BLOCKED,
-            reason="contract",
-            headline=f"Eval gate error: {exc}",
-        )
-        _emit(verdict, run_id, None, None, args.report_out, args.md_out)
-        return verdict.exit_code
-
-    config = load_config(args.gates)
-    metric_summary = scorecard["metric_summary"]
-
+    # Try to surface the scorecard's run_id even if later steps fail, for the report.
+    run_id = "unknown"
     baseline_run_id: str | None = None
     baseline_age_days: int | None = None
-    regressions = []
-    if args.baseline is not None and Path(args.baseline).exists():
-        baseline = _read_json(args.baseline)
-        regressions = diff(config, metric_summary, baseline.get("metric_summary", {}))
-        baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
-        baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
 
-    hard, soft = evaluate(config, metric_summary)
-    verdict = decide(hard, soft, regressions)
+    try:
+        scorecard = _read_json(args.scorecard)
+        if isinstance(scorecard, dict):
+            run_id = str(scorecard.get("run_id", "unknown"))
+        validate(scorecard)  # ContractError -> controlled report
+
+        config = load_config(args.gates)  # ConfigError -> controlled report
+        metric_summary = scorecard["metric_summary"]
+
+        regressions = []
+        notes: list[str] = []
+        if args.baseline is not None:
+            if not Path(args.baseline).exists():
+                # A "regression-vs-baseline" gate cannot certify "no regression" with no
+                # baseline. Missing baseline -> INCOMPLETE (unless explicitly optional).
+                if config.regression.require_baseline:
+                    verdict = Verdict(
+                        status="INCOMPLETE",
+                        exit_code=EXIT_INCOMPLETE,
+                        reason="baseline_missing",
+                        headline=f"Eval gate incomplete: baseline not found at {args.baseline}",
+                    )
+                    _emit(verdict, run_id, None, None, args.report_out, args.md_out)
+                    return verdict.exit_code
+                notes.append(f"baseline {args.baseline} not found; regression check skipped")
+            else:
+                baseline = _read_json(args.baseline)  # ConfigError on bad JSON
+                regressions = diff(config, metric_summary, baseline.get("metric_summary", {}))
+                baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
+                baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
+                note = _stale_baseline_note(baseline_age_days, config.regression.baseline_max_age_days)
+                if note:
+                    notes.append(note)
+
+        hard, soft = evaluate(config, metric_summary)  # ConfigError if a gate metric is absent
+        verdict = decide(hard, soft, regressions)
+        if notes:
+            verdict = replace(verdict, notes=notes)
+    except ContractError as exc:
+        verdict = Verdict(
+            status="BLOCKED", exit_code=EXIT_BLOCKED, reason="contract",
+            headline=f"Eval gate error: {exc}",
+        )
+    except ConfigError as exc:
+        verdict = Verdict(
+            status="BLOCKED", exit_code=EXIT_BLOCKED, reason="error",
+            headline=f"Eval gate error: {exc}",
+        )
+
     _emit(verdict, run_id, baseline_run_id, baseline_age_days, args.report_out, args.md_out)
     return verdict.exit_code
+
+
+def _stale_baseline_note(age_days: int | None, max_age_days: int) -> str | None:
+    if age_days is not None and age_days > max_age_days:
+        return (
+            f"baseline is {age_days} days old (limit {max_age_days}); "
+            f"re-accept it to keep regression detection meaningful"
+        )
+    return None
 
 
 def accept_baseline_main(argv: list[str] | None = None) -> int:
@@ -152,6 +186,8 @@ def _emit(
     if md_out is not None:
         Path(md_out).write_text(summary)
     print(verdict.headline)
+    for note in verdict.notes:
+        print(f"note: {note}")
     _run_notifiers(summary)
 
 

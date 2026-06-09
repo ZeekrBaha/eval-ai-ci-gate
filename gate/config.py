@@ -39,6 +39,7 @@ class RegressionSpec:
     default_tolerance: float = DEFAULT_TOLERANCE
     per_metric: dict[str, float] = field(default_factory=dict)
     baseline_max_age_days: int = DEFAULT_BASELINE_MAX_AGE_DAYS
+    require_baseline: bool = True
 
     def tolerance_for(self, metric: str) -> float:
         """Per-metric tolerance if set, else the default tolerance."""
@@ -98,9 +99,20 @@ def _parse_gates(items: Any, where: str) -> list[GateSpec]:
 def _parse_regression(raw: Any) -> RegressionSpec:
     if not isinstance(raw, dict):
         raise ConfigError(f"regression must be a mapping, got {type(raw).__name__}")
-    unknown = set(raw) - {"default_tolerance", "per_metric", "baseline_max_age_days"}
+    unknown = set(raw) - {
+        "default_tolerance",
+        "per_metric",
+        "baseline_max_age_days",
+        "require_baseline",
+    }
     if unknown:
         raise ConfigError(f"unknown key(s) in regression: {sorted(unknown)}")
+
+    require_baseline = raw.get("require_baseline", True)
+    if not isinstance(require_baseline, bool):
+        raise ConfigError(
+            f"regression.require_baseline must be a boolean, got {require_baseline!r}"
+        )
 
     default_tol = raw.get("default_tolerance", DEFAULT_TOLERANCE)
     if isinstance(default_tol, bool) or not isinstance(default_tol, (int, float)):
@@ -123,4 +135,5 @@ def _parse_regression(raw: Any) -> RegressionSpec:
         default_tolerance=float(default_tol),
         per_metric=per_metric,
         baseline_max_age_days=max_age,
+        require_baseline=require_baseline,
     )

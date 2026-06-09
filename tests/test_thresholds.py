@@ -69,6 +69,19 @@ def test_values_rounded_to_three_dp_in_message() -> None:
     assert hard[0].message == "faithfulness 0.935 < 0.95"
 
 
+def test_borderline_below_threshold_fails_with_exact_comparison() -> None:
+    # 0.9495 rounds to 0.95 at 3dp; an exact decision must still FAIL a >= 0.95 gate.
+    cfg = _cfg([GateSpec("faithfulness", 0.95, ">=")])
+    hard, _soft = evaluate(cfg, {"faithfulness": 0.9495})
+    assert hard[0].status == "fail"
+
+
+def test_borderline_le_above_max_fails_with_exact_comparison() -> None:
+    cfg = _cfg([GateSpec("hallucination_rate", 0.01, "<=")])
+    hard, _soft = evaluate(cfg, {"hallucination_rate": 0.0105})
+    assert hard[0].status == "fail"
+
+
 def test_result_carries_metric_and_value() -> None:
     cfg = _cfg([GateSpec("faithfulness", 0.95, ">=")])
     hard, _soft = evaluate(cfg, {"faithfulness": 0.96})

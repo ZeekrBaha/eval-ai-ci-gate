@@ -61,8 +61,9 @@ def _eval_one(spec: GateSpec, metric_summary: MetricSummary) -> GateResult:
     value = metric_summary[spec.metric]
     if value is None:
         return GateResult(spec.metric, spec.op, spec.threshold, None, "unevaluated")
-    rounded = round(float(value), 3)
-    passed = _OPS[spec.op](rounded, round(spec.threshold, 3))
+    # Decide on the EXACT value (metric + threshold come straight from JSON/YAML, no
+    # arithmetic), so a 0.9495 value cannot slip past a 0.95 gate. Rounding is display-only.
+    passed = _OPS[spec.op](float(value), spec.threshold)
     return GateResult(
         metric=spec.metric,
         op=spec.op,

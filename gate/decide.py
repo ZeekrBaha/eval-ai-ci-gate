@@ -19,7 +19,9 @@ from gate.regression import RegressionResult
 from gate.thresholds import GateResult
 
 Status = Literal["PASS", "BLOCKED", "INCOMPLETE"]
-Reason = Literal["contract", "hard_gate", "regression", "incomplete", "pass"]
+Reason = Literal[
+    "contract", "error", "hard_gate", "regression", "baseline_missing", "incomplete", "pass"
+]
 
 EXIT_PASS = 0
 EXIT_BLOCKED = 1
@@ -36,6 +38,8 @@ class Verdict:
     soft: list[GateResult] = field(default_factory=list)
     regressions: list[RegressionResult] = field(default_factory=list)
     warnings: list[GateResult] = field(default_factory=list)
+    # Non-blocking notices (e.g. stale-baseline warning). Surfaced in the report, never change status.
+    notes: list[str] = field(default_factory=list)
 
 
 def decide(

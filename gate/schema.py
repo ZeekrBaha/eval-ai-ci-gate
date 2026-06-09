@@ -13,11 +13,13 @@ Contract (see docs/implementation/scorecard-contract.md):
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 SUPPORTED_MAJOR = 1
 
 REQUIRED_FIELDS = ("schema_version", "run_id", "status", "metric_summary")
+KNOWN_STATUSES = ("PASS", "BLOCKED", "INCOMPLETE")
 
 
 class ContractError(ValueError):
@@ -34,17 +36,30 @@ def validate(scorecard: Any) -> None:
             raise ContractError(f"scorecard missing required field '{field}'")
 
     _validate_version(scorecard["schema_version"])
+
+    if not isinstance(scorecard["run_id"], str):
+        raise ContractError(
+            f"run_id must be a string, got {type(scorecard['run_id']).__name__}"
+        )
+
+    status = scorecard["status"]
+    if status not in KNOWN_STATUSES:
+        raise ContractError(
+            f"status must be one of {list(KNOWN_STATUSES)}, got {status!r}"
+        )
+
     _validate_metric_summary(scorecard["metric_summary"])
 
 
 def _validate_version(version: Any) -> None:
     if not isinstance(version, str):
         raise ContractError(f"schema_version must be a string, got {type(version).__name__}")
-    head = version.split(".", 1)[0]
-    try:
-        major = int(head)
-    except ValueError as exc:
-        raise ContractError(f"schema_version '{version}' is not 'major.minor'") from exc
+    parts = version.split(".")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        raise ContractError(
+            f"schema_version '{version}' is not exactly 'major.minor' (two integers)"
+        )
+    major = int(parts[0])
     if major != SUPPORTED_MAJOR:
         raise ContractError(
             f"unsupported scorecard schema_version '{version}': "
@@ -59,6 +74,10 @@ def _validate_metric_summary(metric_summary: Any) -> None:
             f"got {type(metric_summary).__name__}"
         )
     for name, value in metric_summary.items():
+        if not isinstance(name, str):
+            raise ContractError(
+                f"metric name must be a string, got {type(name).__name__} ({name!r})"
+            )
         # bool is a subclass of int — reject it explicitly; a gate metric is numeric or null.
         if value is None:
             continue
@@ -66,4 +85,8 @@ def _validate_metric_summary(metric_summary: Any) -> None:
             raise ContractError(
                 f"metric_summary['{name}'] must be a number or null, "
                 f"got {type(value).__name__}"
+            )
+        if not math.isfinite(float(value)):
+            raise ContractError(
+                f"metric_summary['{name}'] must be a finite number, got {value!r}"
             )

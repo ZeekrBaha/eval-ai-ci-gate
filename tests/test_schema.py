@@ -77,3 +77,55 @@ def test_accepts_higher_minor_version() -> None:
 def test_rejects_non_dict() -> None:
     with pytest.raises(ContractError):
         validate(["not", "a", "dict"])
+
+
+def test_rejects_non_string_run_id() -> None:
+    sc = _valid()
+    sc["run_id"] = 123
+    with pytest.raises(ContractError, match="run_id"):
+        validate(sc)
+
+
+def test_rejects_unknown_status_value() -> None:
+    sc = _valid()
+    sc["status"] = "MAYBE"
+    with pytest.raises(ContractError, match="status"):
+        validate(sc)
+
+
+def test_accepts_each_known_status() -> None:
+    for s in ("PASS", "BLOCKED", "INCOMPLETE"):
+        sc = _valid()
+        sc["status"] = s
+        validate(sc)
+
+
+def test_rejects_non_string_metric_key() -> None:
+    sc = _valid()
+    sc["metric_summary"] = {1: 0.9}
+    with pytest.raises(ContractError, match="metric name"):
+        validate(sc)
+
+
+def test_rejects_non_finite_metric_value() -> None:
+    sc = _valid()
+    sc["metric_summary"] = {"faithfulness": float("nan")}
+    with pytest.raises(ContractError, match="finite"):
+        validate(sc)
+    sc["metric_summary"] = {"faithfulness": float("inf")}
+    with pytest.raises(ContractError, match="finite"):
+        validate(sc)
+
+
+def test_rejects_schema_version_without_minor() -> None:
+    sc = _valid()
+    sc["schema_version"] = "1"
+    with pytest.raises(ContractError, match="major.minor"):
+        validate(sc)
+
+
+def test_rejects_schema_version_with_three_parts() -> None:
+    sc = _valid()
+    sc["schema_version"] = "1.0.0"
+    with pytest.raises(ContractError, match="major.minor"):
+        validate(sc)
