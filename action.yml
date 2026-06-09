@@ -29,14 +29,13 @@ runs:
     - name: Install uv
       uses: astral-sh/setup-uv@v5
 
-    - name: Install eval-ai-ci-gate (with notify extra so Slack/PR-comment work)
-      shell: bash
-      run: uv tool install "eval-ai-ci-gate[notify] @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}"
-
+    # Install + run in one step via uvx, with the FULL git requirement in --from so the
+    # package resolves from this repo (not PyPI, where it does not exist). The [notify]
+    # extra brings in `requests` for the Slack / PR-comment notifiers.
     - name: Run release gate
       shell: bash
       run: |
-        uv tool run --from eval-ai-ci-gate run-gate \
+        uvx --python 3.12 --from "eval-ai-ci-gate[notify] @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}" run-gate \
           --scorecard "${{ inputs.scorecard-path }}" \
           --gates "${{ inputs.gates-path }}" \
           --baseline "${{ inputs.baseline-path }}" \

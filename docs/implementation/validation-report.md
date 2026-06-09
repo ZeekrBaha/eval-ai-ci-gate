@@ -6,7 +6,7 @@ Live notifier POSTs and the consumer-workflow run only execute in real CI; those
 ## Static + unit
 - [x] `uv run ruff check .` — clean
 - [x] `uv run mypy gate tests` — strict, no issues
-- [x] `uv run pytest` — **100 passed**
+- [x] `uv run pytest` — **107 passed**
 - [x] `make check` — green
 
 ## Behavioral scenarios (exit code + money-shot line) — verified via CLI

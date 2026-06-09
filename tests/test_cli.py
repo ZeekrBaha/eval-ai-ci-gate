@@ -214,6 +214,33 @@ def test_missing_baseline_is_incomplete(
     assert report.exists()
 
 
+def test_invalid_baseline_is_incomplete(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A baseline that exists but is not a valid scorecard must NOT silently skip regression.
+    code, report = _run_with_gates(
+        tmp_path, "pass.json", Path(GATES), FIX / "no_metric_summary.json"
+    )
+    assert code == 2
+    out = capsys.readouterr().out.lower()
+    assert "baseline" in out and "valid" in out
+    assert report.exists()
+
+
+def test_invalid_baseline_skipped_when_not_required(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gates = tmp_path / "gates.yaml"
+    gates.write_text(
+        'hard_gates:\n  - { metric: faithfulness, threshold: 0.95, op: ">=" }\n'
+        "regression:\n  require_baseline: false\n"
+    )
+    code, _ = _run_with_gates(tmp_path, "pass.json", gates, FIX / "no_metric_summary.json")
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "invalid" in out.lower() and "skipped" in out.lower()
+
+
 def test_missing_baseline_optional_when_not_required(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

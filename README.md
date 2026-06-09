@@ -6,7 +6,7 @@
 > the merge) when a hard gate fails or a metric regresses beyond tolerance.
 
 > **Status (measured, offline):** core pipeline complete and verified — `make check` is green
-> (**ruff** clean, **mypy --strict** clean, **100 tests pass**), and all five verdict paths run
+> (**ruff** clean, **mypy --strict** clean, **107 tests pass**), and all five verdict paths run
 > end-to-end with the right exit codes:
 > `make gate` → PASS (exit 0), `make gate-fail` → BLOCKED (exit 1).
 >
@@ -82,10 +82,11 @@ Exit codes match Project 1's contract: **0 = PASS, 1 = BLOCKED, 2 = INCOMPLETE**
 
 Highest wins: **contract → hard_gate → regression → incomplete → pass**. A `null` (unevaluated)
 hard-gated metric yields INCOMPLETE — never PASS. Soft-gate failures are **warnings only**; they
-never block. A missing required baseline yields INCOMPLETE (you cannot certify "no regression" with
-nothing to compare against). Operational problems — bad YAML, missing/invalid scorecard or baseline
-JSON, a gate referencing a metric the scorecard never emits — are **caught and turned into a
-deterministic report + exit code**, never an uncaught stack trace.
+never block. A missing **or invalid** required baseline yields INCOMPLETE (you cannot certify "no
+regression" against a baseline that is absent or not a valid scorecard — it is never silently
+skipped). Operational problems — bad YAML, missing/invalid scorecard or baseline JSON, a gate
+referencing a metric the scorecard never emits — are **caught and turned into a deterministic
+report + exit code**, never an uncaught stack trace.
 
 ## 5. `eval-gates.yaml`
 
@@ -120,7 +121,7 @@ Onboarding Project 1 requires only adding `"schema_version": "1.0"` to its exist
 
 ```bash
 uv sync
-make check            # ruff + mypy --strict + pytest (100 tests)
+make check            # ruff + mypy --strict + pytest (107 tests)
 
 # Run the gate directly
 uv run run-gate \
@@ -179,7 +180,7 @@ jobs:
 | `action.yml` | composite-action wrapper |
 | `.github/workflows/ci.yml` | this repo dogfooding its own gate |
 | `examples/` | consumer workflow + starter `eval-gates.yaml` |
-| `tests/` | 100 tests (one suite per module) |
+| `tests/` | 107 tests (one suite per module) |
 | `docs/implementation/` | research, requirements, design, architecture, plan, validation |
 
 ## 9. Tech stack
@@ -194,4 +195,4 @@ Notifiers add `requests` (optional extra). No web framework, no DB — the gate 
 - **Single-run only.** No historical trend DB / dashboard — out of scope for v1.
 - **Notifier HTTP paths are mock-tested.** Slack/PR-comment logic is unit-tested with injected
   HTTP; the live POST paths run only in real CI (graceful skip without a webhook/token).
-- Built and tested TDD: every module had a failing test first (**100 tests**). See `docs/implementation/`.
+- Built and tested TDD: every module had a failing test first (**107 tests**). See `docs/implementation/`.

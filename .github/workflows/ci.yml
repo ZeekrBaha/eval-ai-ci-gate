@@ -36,16 +36,21 @@ jobs:
   # Installs the package the same way the composite action does (with the notify extra)
   # and proves the notifier import path works in a clean tool environment — the runtime
   # path that unit tests, running under dev deps, cannot catch.
-  install-smoke:
+  # Mirrors the EXACT invocation the composite action uses — `uvx --python 3.12 --from
+  # "<requirement>" run-gate ...` — proving install-and-run from a requirement works and
+  # the notifier dep (requests, via the [notify] extra) is importable at runtime. Uses the
+  # local checkout as the requirement so it does not depend on PyPI.
+  action-invocation-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Install with the notify extra (the runtime path the Action uses)
+      - name: Run the gate exactly as the Action does (uvx, from a requirement)
         run: |
-          uv venv
-          uv pip install ".[notify]"
-      - name: Prove the CLI runs and the notifier deps import
-        run: |
-          uv run validate-scorecard --scorecard tests/fixtures/pass.json
-          uv run python -c "import requests, gate.notify; print('notify import OK')"
+          uvx --python 3.12 --from ".[notify]" run-gate \
+            --scorecard tests/fixtures/pass.json \
+            --gates eval-gates.yaml \
+            --baseline baseline/scorecard.json \
+            --report-out report.html
+      - name: Prove the notifier dependency imports in that environment
+        run: uvx --python 3.12 --from ".[notify]" python -c "import requests; print('requests OK')"

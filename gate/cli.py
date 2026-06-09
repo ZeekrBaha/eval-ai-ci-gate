@@ -69,12 +69,33 @@ def run_gate_main(argv: list[str] | None = None) -> int:
                 notes.append(f"baseline {args.baseline} not found; regression check skipped")
             else:
                 baseline = _read_json(args.baseline)  # ConfigError on bad JSON
-                regressions = diff(config, metric_summary, baseline.get("metric_summary", {}))
-                baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
-                baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
-                note = _stale_baseline_note(baseline_age_days, config.regression.baseline_max_age_days)
-                if note:
-                    notes.append(note)
+                # A baseline that exists but is not a valid scorecard must not silently
+                # skip regression (it would otherwise diff against {} and always "pass").
+                try:
+                    validate(baseline)
+                except ContractError as exc:
+                    if config.regression.require_baseline:
+                        verdict = Verdict(
+                            status="INCOMPLETE",
+                            exit_code=EXIT_INCOMPLETE,
+                            reason="baseline_invalid",
+                            headline=(
+                                f"Eval gate incomplete: baseline at {args.baseline} "
+                                f"is not a valid scorecard ({exc})"
+                            ),
+                        )
+                        _emit(verdict, run_id, None, None, args.report_out, args.md_out)
+                        return verdict.exit_code
+                    notes.append(f"baseline {args.baseline} is invalid; regression check skipped")
+                else:
+                    regressions = diff(config, metric_summary, baseline["metric_summary"])
+                    baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
+                    baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
+                    note = _stale_baseline_note(
+                        baseline_age_days, config.regression.baseline_max_age_days
+                    )
+                    if note:
+                        notes.append(note)
 
         hard, soft = evaluate(config, metric_summary)  # ConfigError if a gate metric is absent
         verdict = decide(hard, soft, regressions)

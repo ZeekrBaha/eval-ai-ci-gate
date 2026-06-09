@@ -20,7 +20,14 @@ from gate.thresholds import GateResult
 
 Status = Literal["PASS", "BLOCKED", "INCOMPLETE"]
 Reason = Literal[
-    "contract", "error", "hard_gate", "regression", "baseline_missing", "incomplete", "pass"
+    "contract",
+    "error",
+    "hard_gate",
+    "regression",
+    "baseline_missing",
+    "baseline_invalid",
+    "incomplete",
+    "pass",
 ]
 
 EXIT_PASS = 0
