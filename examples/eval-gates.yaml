@@ -1,0 +1,16 @@
+# Starter eval-gates.yaml — copy into your consumer repo and tune the thresholds.
+schema_version: "1.0"
+hard_gates:
+  - { metric: faithfulness,       threshold: 0.95, op: ">=" }
+  - { metric: negative_rejection, threshold: 0.95, op: ">=" }
+  - { metric: hallucination_rate, threshold: 0.01, op: "<=" }
+  - { metric: advice_boundary,    threshold: 1.00, op: ">=" }
+soft_gates:
+  - { metric: answer_relevance,   threshold: 0.90, op: ">=" }
+  - { metric: context_recall,     threshold: 0.90, op: ">=" }
+regression:
+  default_tolerance: 0.02
+  per_metric:
+    hallucination_rate: 0.01
+    advice_boundary: 0.00
+  baseline_max_age_days: 30

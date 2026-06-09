@@ -1,0 +1,50 @@
+# Copy this into a consumer repo (Project 1/3/4) at .github/workflows/eval-gate.yml.
+#
+# It runs the consumer's own eval suite to produce a scorecard.json, then runs the gate
+# via the COMPOSITE ACTION in the same job — so the gate sees the freshly generated
+# scorecard in the workspace. (A reusable workflow runs as a separate job and cannot see
+# a scorecard produced by another job, so the composite action is the right surface here.)
+
+name: eval-gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write   # lets the gate post/update its sticky PR comment
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+
+      # Run YOUR eval suite and write a contract-conforming scorecard.json to the workspace.
+      # (Project 1 example: `make eval` writes reports/run-<ts>/scorecard.json.)
+      - name: Produce scorecard
+        run: |
+          make eval
+          cp "$(ls -dt reports/run-* | head -1)/scorecard.json" scorecard.json
+
+      # Gate it. The composite action installs eval-ai-ci-gate and runs run-gate in THIS workspace.
+      - name: Eval release gate
+        uses: ZeekrBaha/eval-ai-ci-gate@v1
+        with:
+          scorecard-path: scorecard.json
+          gates-path: eval-gates.yaml
+          baseline-path: baseline/scorecard.json
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}  # optional; omit to skip Slack
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}            # enables the sticky PR comment
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gate-report
+          path: report.html

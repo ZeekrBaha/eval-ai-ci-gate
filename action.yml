@@ -1,0 +1,43 @@
+name: "Eval AI CI Gate"
+description: "Run the eval release gate against a scorecard.json — hard thresholds + regression-vs-baseline."
+branding:
+  icon: "check-circle"
+  color: "green"
+
+inputs:
+  scorecard-path:
+    description: "Path to the scorecard.json the eval suite produced."
+    required: true
+  gates-path:
+    description: "Path to eval-gates.yaml."
+    required: false
+    default: "eval-gates.yaml"
+  baseline-path:
+    description: "Path to the committed baseline scorecard.json."
+    required: false
+    default: "baseline/scorecard.json"
+  gate-ref:
+    description: "Git ref of eval-ai-ci-gate to install."
+    required: false
+    default: "v1"
+
+# Same logic as the reusable workflow, packaged as a composite step for repos that
+# prefer a step over `uses:` a whole workflow. Both delegate to the same run-gate CLI.
+runs:
+  using: "composite"
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    # Install + run in one step via uvx, with the FULL git requirement in --from so the
+    # package resolves from this repo (not PyPI, where it does not exist). The [notify]
+    # extra brings in `requests` for the Slack / PR-comment notifiers.
+    - name: Run release gate
+      shell: bash
+      run: |
+        uvx --python 3.12 --from "eval-ai-ci-gate[notify] @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}" run-gate \
+          --scorecard "${{ inputs.scorecard-path }}" \
+          --gates "${{ inputs.gates-path }}" \
+          --baseline "${{ inputs.baseline-path }}" \
+          --report-out report.html \
+          --md-out summary.md

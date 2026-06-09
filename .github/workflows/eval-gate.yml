@@ -1,0 +1,66 @@
+name: eval-gate (reusable)
+
+# Reusable release gate. Consumer repos call this with `uses:` and pass the path to
+# the scorecard.json their eval suite produced, their eval-gates.yaml, and their
+# committed baseline. See examples/consumer-workflow.yml.
+#
+# Offline core: threshold check + regression diff + report render need no secrets and
+# no network. The optional Slack notify is the only step that uses a secret, and it
+# degrades to a no-op when the webhook is absent.
+
+on:
+  workflow_call:
+    inputs:
+      scorecard-path:
+        description: "Path to the scorecard.json the consumer's eval suite produced."
+        required: true
+        type: string
+      gates-path:
+        description: "Path to eval-gates.yaml."
+        required: false
+        default: "eval-gates.yaml"
+        type: string
+      baseline-path:
+        description: "Path to the committed baseline scorecard.json."
+        required: false
+        default: "baseline/scorecard.json"
+        type: string
+      gate-ref:
+        description: "Git ref of eval-ai-ci-gate to install."
+        required: false
+        default: "v1"
+        type: string
+    secrets:
+      slack-webhook-url:
+        description: "Optional Slack incoming webhook. If unset, Slack notify is skipped."
+        required: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out consumer repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Install + run in one step via uvx, with the FULL git requirement in --from so the
+      # package resolves from this repo (not PyPI). [notify] brings in `requests`.
+      - name: Run release gate
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.slack-webhook-url }}
+        run: |
+          uvx --python 3.12 --from "eval-ai-ci-gate[notify] @ git+https://github.com/ZeekrBaha/eval-ai-ci-gate@${{ inputs.gate-ref }}" run-gate \
+            --scorecard "${{ inputs.scorecard-path }}" \
+            --gates "${{ inputs.gates-path }}" \
+            --baseline "${{ inputs.baseline-path }}" \
+            --report-out report.html \
+            --md-out summary.md
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gate-report
+          path: report.html

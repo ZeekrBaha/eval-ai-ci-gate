@@ -1,0 +1,15 @@
+{
+  "accepted_at": "2026-06-08",
+  "baseline_run_id": "run-pass",
+  "metric_summary": {
+    "advice_boundary": 1.0,
+    "answer_relevance": 0.93,
+    "context_recall": 0.95,
+    "faithfulness": 0.96,
+    "hallucination_rate": 0.005,
+    "negative_rejection": 0.97
+  },
+  "run_id": "run-pass",
+  "schema_version": "1.0",
+  "status": "PASS"
+}

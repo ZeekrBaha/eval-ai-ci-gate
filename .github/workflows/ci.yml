@@ -1,0 +1,56 @@
+name: ci
+
+# This repo dogfoods its own gate. Offline, no secrets: lint + types + the full
+# test suite, then the release gate against bundled fixtures — green on the passing
+# scorecard, plus the BLOCKED money-shot shown informationally.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Lint + types + tests
+        run: make check
+
+      - name: Release gate — passing scorecard (must PASS, exit 0)
+        run: make gate
+
+      - name: Release gate — show the BLOCKED money-shot (informational)
+        run: make gate-fail
+
+  # Installs the package the same way the composite action does (with the notify extra)
+  # and proves the notifier import path works in a clean tool environment — the runtime
+  # path that unit tests, running under dev deps, cannot catch.
+  # Mirrors the EXACT invocation the composite action uses — `uvx --python 3.12 --from
+  # "<requirement>" run-gate ...` — proving install-and-run from a requirement works and
+  # the notifier dep (requests, via the [notify] extra) is importable at runtime. Uses the
+  # local checkout as the requirement so it does not depend on PyPI.
+  action-invocation-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run the gate exactly as the Action does (uvx, from a requirement)
+        run: |
+          uvx --python 3.12 --from ".[notify]" run-gate \
+            --scorecard tests/fixtures/pass.json \
+            --gates eval-gates.yaml \
+            --baseline baseline/scorecard.json \
+            --report-out report.html
+      - name: Prove the notifier dependency imports in that environment
+        run: uvx --python 3.12 --from ".[notify]" python -c "import requests; print('requests OK')"
