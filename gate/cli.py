@@ -112,8 +112,14 @@ def accept_baseline_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline-out", required=True, type=Path)
     args = parser.parse_args(argv)
 
-    scorecard = _read_json(args.scorecard)
-    validate(scorecard)
+    try:
+        scorecard = _read_json(args.scorecard)
+        validate(scorecard)
+    except (ConfigError, ContractError) as exc:
+        # Controlled failure: never write a baseline from a bad/missing scorecard.
+        print(f"accept-baseline error: {exc}")
+        return 1
+
     stamped = dict(scorecard)
     stamped["baseline_run_id"] = scorecard.get("run_id", "unknown")
     stamped["accepted_at"] = datetime.date.today().isoformat()
@@ -133,7 +139,7 @@ def validate_scorecard_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         validate(_read_json(args.scorecard))
-    except ContractError as exc:
+    except (ConfigError, ContractError) as exc:
         print(f"Invalid scorecard: {exc}")
         return 1
     print("Scorecard is valid (contract v1).")

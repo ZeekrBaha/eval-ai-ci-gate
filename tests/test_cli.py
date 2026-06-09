@@ -110,6 +110,58 @@ def test_validate_scorecard_bad(tmp_path: Path) -> None:
     assert validate_scorecard_main(["--scorecard", str(FIX / "no_metric_summary.json")]) == 1
 
 
+def test_validate_scorecard_missing_file_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = validate_scorecard_main(["--scorecard", str(tmp_path / "ghost.json")])
+    assert code == 1
+    assert "ghost.json" in capsys.readouterr().out  # message, not a stack trace
+
+
+def test_validate_scorecard_invalid_json_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not valid json ")
+    code = validate_scorecard_main(["--scorecard", str(bad)])
+    assert code == 1
+    assert "Invalid" in capsys.readouterr().out
+
+
+def test_accept_baseline_missing_file_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = accept_baseline_main(
+        ["--scorecard", str(tmp_path / "ghost.json"), "--baseline-out", str(tmp_path / "b.json")]
+    )
+    assert code == 1
+    assert not (tmp_path / "b.json").exists()  # nothing written on error
+
+
+def test_accept_baseline_invalid_json_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ nope ")
+    code = accept_baseline_main(
+        ["--scorecard", str(bad), "--baseline-out", str(tmp_path / "b.json")]
+    )
+    assert code == 1
+
+
+def test_accept_baseline_invalid_contract_is_controlled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = accept_baseline_main(
+        [
+            "--scorecard", str(FIX / "no_metric_summary.json"),
+            "--baseline-out", str(tmp_path / "b.json"),
+        ]
+    )
+    assert code == 1
+    assert not (tmp_path / "b.json").exists()
+
+
 # --- notifier glue -----------------------------------------------------------
 
 
