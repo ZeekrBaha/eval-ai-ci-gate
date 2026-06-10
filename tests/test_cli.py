@@ -301,3 +301,29 @@ def test_stale_baseline_adds_note_but_still_passes(
     assert code == 0
     assert "note:" in out
     assert "days old" in out
+
+
+# --- trend history (--history-out) -------------------------------------------
+
+
+def test_history_out_appends_one_jsonl_line_per_run(tmp_path: Path) -> None:
+    history = tmp_path / "history.jsonl"
+    report = tmp_path / "report.html"
+    argv = [
+        "--scorecard", str(FIX / "pass.json"), "--gates", GATES,
+        "--baseline", str(FIX / "baseline.json"),
+        "--report-out", str(report), "--history-out", str(history),
+    ]
+    assert run_gate_main(argv) == 0
+    assert run_gate_main(argv) == 0
+    entries = [json.loads(line) for line in history.read_text().splitlines()]
+    assert len(entries) == 2
+    assert all(e["run_id"] == "run-pass" for e in entries)
+    assert all(e["status"] == "PASS" for e in entries)
+    assert all(e["metrics"]["faithfulness"] == 0.96 for e in entries)
+
+
+def test_no_history_flag_writes_no_history_file(tmp_path: Path) -> None:
+    code, _ = _run(tmp_path, "pass.json", "baseline.json")
+    assert code == 0
+    assert list(tmp_path.glob("*.jsonl")) == []

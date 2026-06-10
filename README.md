@@ -121,7 +121,7 @@ Onboarding Project 1 requires only adding `"schema_version": "1.0"` to its exist
 
 ```bash
 uv sync
-make check            # ruff + mypy --strict + pytest (107 tests)
+make check            # ruff + mypy --strict + pytest (113 tests)
 
 # Run the gate directly
 uv run run-gate \
@@ -136,6 +136,14 @@ uv run accept-baseline --scorecard scorecard.json --baseline-out baseline/scorec
 # Let a consumer self-test its emitter against the contract
 uv run validate-scorecard --scorecard scorecard.json
 ```
+
+### Trend history (`--history-out`)
+
+Pass `--history-out history.jsonl` to `run-gate` to record a trend history: each run appends
+one JSON line (`run_id`, ISO-8601 UTC `timestamp`, verdict `status`/`reason`, and the
+scorecard's `metrics`) to that file, creating it if missing. Because the file is append-only
+JSONL, consumers accumulate history across runs and can plot metric trends or audit past
+verdicts. Omit the flag and no history file is written.
 
 In a consumer repo, run your eval suite then call the gate via the **composite action** in the
 same job, so it sees the freshly produced `scorecard.json` (see

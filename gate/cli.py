@@ -21,6 +21,7 @@ from typing import Any
 
 from gate.config import ConfigError, GateConfig, load_config
 from gate.decide import EXIT_BLOCKED, EXIT_INCOMPLETE, Verdict, decide
+from gate.history import append_history
 from gate.notify import notify_slack, upsert_pr_comment
 from gate.regression import RegressionResult, diff
 from gate.report import render_html, render_markdown
@@ -35,12 +36,14 @@ def run_gate_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--report-out", required=True, type=Path)
     parser.add_argument("--md-out", type=Path, default=None)
+    parser.add_argument("--history-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
     # Try to surface the scorecard's run_id even if later steps fail, for the report.
     run_id = "unknown"
     baseline_run_id: str | None = None
     baseline_age_days: int | None = None
+    metric_summary: dict[str, Any] = {}
 
     try:
         scorecard = _read_json(args.scorecard)
@@ -56,6 +59,8 @@ def run_gate_main(argv: list[str] | None = None) -> int:
         )
         if early_verdict is not None:
             _emit(early_verdict, run_id, None, None, args.report_out, args.md_out)
+            if args.history_out is not None:
+                append_history(args.history_out, run_id, early_verdict, metric_summary)
             return early_verdict.exit_code
 
         hard, soft = evaluate(config, metric_summary)  # ConfigError if a gate metric is absent
@@ -74,6 +79,8 @@ def run_gate_main(argv: list[str] | None = None) -> int:
         )
 
     _emit(verdict, run_id, baseline_run_id, baseline_age_days, args.report_out, args.md_out)
+    if args.history_out is not None:
+        append_history(args.history_out, run_id, verdict, metric_summary)
     return verdict.exit_code
 
 
