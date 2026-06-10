@@ -12,6 +12,8 @@ from typing import Any, Callable, Protocol
 
 PR_COMMENT_MARKER = "<!-- eval-ai-ci-gate -->"
 
+GITHUB_API_BASE = "https://api.github.com"
+
 # post(url, json_payload) -> http_status_code
 SlackPost = Callable[[str, dict[str, Any]], int]
 
@@ -65,18 +67,18 @@ def upsert_pr_comment(
     marked_body = f"{marker}\n{body}"
 
     _status, comments = http.get(
-        f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments", headers
+        f"{GITHUB_API_BASE}/repos/{repo}/issues/{pr_number}/comments", headers
     )
     existing_id = _find_marked(comments, marker)
     if existing_id is not None:
         http.patch(
-            f"https://api.github.com/repos/{repo}/issues/comments/{existing_id}",
+            f"{GITHUB_API_BASE}/repos/{repo}/issues/comments/{existing_id}",
             headers,
             {"body": marked_body},
         )
         return "updated"
     http.post(
-        f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments",
+        f"{GITHUB_API_BASE}/repos/{repo}/issues/{pr_number}/comments",
         headers,
         {"body": marked_body},
     )
