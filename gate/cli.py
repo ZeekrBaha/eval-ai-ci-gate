@@ -19,10 +19,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from gate.config import ConfigError, load_config
+from gate.config import ConfigError, GateConfig, load_config
 from gate.decide import EXIT_BLOCKED, EXIT_INCOMPLETE, Verdict, decide
+from gate.history import append_history
 from gate.notify import notify_slack, upsert_pr_comment
-from gate.regression import diff
+from gate.regression import RegressionResult, diff
 from gate.report import render_html, render_markdown
 from gate.schema import ContractError, validate
 from gate.thresholds import evaluate
@@ -35,12 +36,14 @@ def run_gate_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--report-out", required=True, type=Path)
     parser.add_argument("--md-out", type=Path, default=None)
+    parser.add_argument("--history-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
     # Try to surface the scorecard's run_id even if later steps fail, for the report.
     run_id = "unknown"
     baseline_run_id: str | None = None
     baseline_age_days: int | None = None
+    metric_summary: dict[str, Any] = {}
 
     try:
         scorecard = _read_json(args.scorecard)
@@ -51,51 +54,14 @@ def run_gate_main(argv: list[str] | None = None) -> int:
         config = load_config(args.gates)  # ConfigError -> controlled report
         metric_summary = scorecard["metric_summary"]
 
-        regressions = []
-        notes: list[str] = []
-        if args.baseline is not None:
-            if not Path(args.baseline).exists():
-                # A "regression-vs-baseline" gate cannot certify "no regression" with no
-                # baseline. Missing baseline -> INCOMPLETE (unless explicitly optional).
-                if config.regression.require_baseline:
-                    verdict = Verdict(
-                        status="INCOMPLETE",
-                        exit_code=EXIT_INCOMPLETE,
-                        reason="baseline_missing",
-                        headline=f"Eval gate incomplete: baseline not found at {args.baseline}",
-                    )
-                    _emit(verdict, run_id, None, None, args.report_out, args.md_out)
-                    return verdict.exit_code
-                notes.append(f"baseline {args.baseline} not found; regression check skipped")
-            else:
-                baseline = _read_json(args.baseline)  # ConfigError on bad JSON
-                # A baseline that exists but is not a valid scorecard must not silently
-                # skip regression (it would otherwise diff against {} and always "pass").
-                try:
-                    validate(baseline)
-                except ContractError as exc:
-                    if config.regression.require_baseline:
-                        verdict = Verdict(
-                            status="INCOMPLETE",
-                            exit_code=EXIT_INCOMPLETE,
-                            reason="baseline_invalid",
-                            headline=(
-                                f"Eval gate incomplete: baseline at {args.baseline} "
-                                f"is not a valid scorecard ({exc})"
-                            ),
-                        )
-                        _emit(verdict, run_id, None, None, args.report_out, args.md_out)
-                        return verdict.exit_code
-                    notes.append(f"baseline {args.baseline} is invalid; regression check skipped")
-                else:
-                    regressions = diff(config, metric_summary, baseline["metric_summary"])
-                    baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
-                    baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
-                    note = _stale_baseline_note(
-                        baseline_age_days, config.regression.baseline_max_age_days
-                    )
-                    if note:
-                        notes.append(note)
+        regressions, notes, baseline_run_id, baseline_age_days, early_verdict = (
+            _handle_baseline(args.baseline, config, metric_summary)
+        )
+        if early_verdict is not None:
+            _emit(early_verdict, run_id, None, None, args.report_out, args.md_out)
+            if args.history_out is not None:
+                append_history(args.history_out, run_id, early_verdict, metric_summary)
+            return early_verdict.exit_code
 
         hard, soft = evaluate(config, metric_summary)  # ConfigError if a gate metric is absent
         verdict = decide(hard, soft, regressions)
@@ -113,7 +79,69 @@ def run_gate_main(argv: list[str] | None = None) -> int:
         )
 
     _emit(verdict, run_id, baseline_run_id, baseline_age_days, args.report_out, args.md_out)
+    if args.history_out is not None:
+        append_history(args.history_out, run_id, verdict, metric_summary)
     return verdict.exit_code
+
+
+def _handle_baseline(
+    baseline_path: Path | None,
+    config: GateConfig,
+    metric_summary: dict[str, Any],
+) -> tuple[list[RegressionResult], list[str], str | None, int | None, Verdict | None]:
+    """Run the regression check against an optional baseline.
+
+    Returns (regressions, notes, baseline_run_id, baseline_age_days, early_verdict).
+    *early_verdict* is non-None when the gate must stop as INCOMPLETE (baseline
+    required but missing/invalid); otherwise the caller proceeds to thresholds.
+    May raise ConfigError (unreadable baseline JSON) for the caller's controlled report.
+    """
+    regressions: list[RegressionResult] = []
+    notes: list[str] = []
+    if baseline_path is None:
+        return regressions, notes, None, None, None
+
+    if not Path(baseline_path).exists():
+        # A "regression-vs-baseline" gate cannot certify "no regression" with no
+        # baseline. Missing baseline -> INCOMPLETE (unless explicitly optional).
+        if config.regression.require_baseline:
+            verdict = Verdict(
+                status="INCOMPLETE",
+                exit_code=EXIT_INCOMPLETE,
+                reason="baseline_missing",
+                headline=f"Eval gate incomplete: baseline not found at {baseline_path}",
+            )
+            return regressions, notes, None, None, verdict
+        notes.append(f"baseline {baseline_path} not found; regression check skipped")
+        return regressions, notes, None, None, None
+
+    baseline = _read_json(baseline_path)  # ConfigError on bad JSON
+    # A baseline that exists but is not a valid scorecard must not silently
+    # skip regression (it would otherwise diff against {} and always "pass").
+    try:
+        validate(baseline)
+    except ContractError as exc:
+        if config.regression.require_baseline:
+            verdict = Verdict(
+                status="INCOMPLETE",
+                exit_code=EXIT_INCOMPLETE,
+                reason="baseline_invalid",
+                headline=(
+                    f"Eval gate incomplete: baseline at {baseline_path} "
+                    f"is not a valid scorecard ({exc})"
+                ),
+            )
+            return regressions, notes, None, None, verdict
+        notes.append(f"baseline {baseline_path} is invalid; regression check skipped")
+        return regressions, notes, None, None, None
+
+    regressions = diff(config, metric_summary, baseline["metric_summary"])
+    baseline_run_id = baseline.get("baseline_run_id") or baseline.get("run_id")
+    baseline_age_days = _baseline_age_days(baseline.get("accepted_at"))
+    note = _stale_baseline_note(baseline_age_days, config.regression.baseline_max_age_days)
+    if note:
+        notes.append(note)
+    return regressions, notes, baseline_run_id, baseline_age_days, None
 
 
 def _stale_baseline_note(age_days: int | None, max_age_days: int) -> str | None:
